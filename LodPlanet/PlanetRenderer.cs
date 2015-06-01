@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections;
 using System.Collections.Concurrent;
 using OpenTK.Graphics.OpenGL;
 using OpenTK;
@@ -8,7 +9,7 @@ using System.Threading;
 namespace LodPlanet
 {
 
-    class DrawData
+    public class DrawData
     {
         private PlanetRenderer Manager; //Buffer manager
 
@@ -42,7 +43,7 @@ namespace LodPlanet
     }
 
     //Global buffer manager
-    public class PlanetRenderer : IEnumerable<DrawData>
+    public class PlanetRenderer : IEnumerable
     {
         //Class that holds the data necessary to clean up after a vertex buffer
         internal class DrawDataInst
@@ -54,7 +55,7 @@ namespace LodPlanet
                 BufferID = buf;
             }
         }
-
+        
         private struct Pair
         {
             internal DrawData buffer;
@@ -67,11 +68,11 @@ namespace LodPlanet
             }
         }
 
-        private ConcurrentQueue<DrawDataInst> ToDelete;
-        private ConcurrentQueue<Pair> ToCreate;
-        private ConcurrentQueue<DrawData> ToRemove;
+        private ConcurrentQueue<DrawDataInst> ToDelete = new ConcurrentQueue<DrawDataInst>();
+        private ConcurrentQueue<Pair> ToCreate = new ConcurrentQueue<Pair>();
+        private ConcurrentQueue<DrawData> ToRemove = new ConcurrentQueue<DrawData>();
 
-        List<WeakReference<DrawData>> RenderList;
+        List<WeakReference<DrawData>> RenderList = new List<WeakReference<DrawData>>();
 
         internal void DeleteBuffer(DrawDataInst buf)
         {
@@ -86,7 +87,7 @@ namespace LodPlanet
             ToRemove.Enqueue(buf);
         }
 
-        public IEnumerator<DrawData> GetEnumerator()
+        public IEnumerator GetEnumerator()
         {
             Stack<int> RemoveQueue = new Stack<int>();
 
