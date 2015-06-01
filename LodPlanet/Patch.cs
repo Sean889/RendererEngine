@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using GraphicsMath;
+using OpenTK;
 
 namespace LodPlanet
 {
@@ -135,9 +135,9 @@ namespace LodPlanet
         public Patch se = null; //Quadrant 3
 
         //Corners of the patch on the base cube
-        public dvec3 nwc, nec, swc, sec;
+        public Vector3d nwc, nec, swc, sec;
 
-        public dvec3 pos;               //Position on the sphere
+        public Vector3d pos;               //Position on the sphere
 
         public uint level;              //Level within the quadtree
         public double side_len;         //Side length of the patch
@@ -145,14 +145,14 @@ namespace LodPlanet
 
         public float[,] mesh_data = null;
 
-        private GLCommandManager executor;
+        private PlanetRenderer executor;
 
         bool IsSubdivided()
         {
             return nw != null;
         }
 
-        Patch(dvec3 nwc, dvec3 nec, dvec3 swc, dvec3 sec, double planet_radius, double side_len, GLCommandManager manager, Patch parent = null, uint level = 0)
+        Patch(Vector3d nwc, Vector3d nec, Vector3d swc, Vector3d sec, double planet_radius, double side_len, PlanetRenderer manager, Patch parent = null, uint level = 0)
         {
             this.nwc = nwc;
             this.nec = nec;

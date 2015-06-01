@@ -2,17 +2,22 @@
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using OpenTK.Graphics.OpenGL;
+using OpenTK;
 using System.Threading;
 
 namespace LodPlanet
 {
-    class VertexBuffer
+
+    class DrawData
     {
-        internal uint BufferID = 0;
+        private PlanetRenderer Manager; //Buffer manager
+
+        public Vector3d Offset;         //Point on the planet
+        public uint BufferID = 0;       //OpenGL buffer id
 
         internal void RemoveSelf()
         {
-            GLBufferManager.Global.RemoveBuffer(this);
+            Manager.RemoveBuffer(this);
         }
 
         public void Bind()
@@ -24,20 +29,27 @@ namespace LodPlanet
             return BufferID != 0;
         }
 
-        ~VertexBuffer()
+        DrawData(PlanetRenderer renderer, Vector3d offset)
         {
-            GLBufferManager.Global.DeleteBuffer(new GLBufferManager.VertexBufferInst(BufferID));
+            Manager = renderer;
+            Offset = offset;
+        }
+
+        ~DrawData()
+        {
+            Manager.DeleteBuffer(new PlanetRenderer.DrawDataInst(BufferID));
         }
     }
 
     //Global buffer manager
-    public class GLBufferManager : IEnumerable<VertexBuffer>
+    public class PlanetRenderer : IEnumerable<DrawData>
     {
-        internal class VertexBufferInst
+        //Class that holds the data necessary to clean up after a vertex buffer
+        internal class DrawDataInst
         {
             internal uint BufferID;
 
-            internal VertexBufferInst(uint buf)
+            internal DrawDataInst(uint buf)
             {
                 BufferID = buf;
             }
@@ -45,63 +57,43 @@ namespace LodPlanet
 
         private struct Pair
         {
-            internal VertexBuffer buffer;
+            internal DrawData buffer;
             internal float[,] vertices;
 
-            internal Pair(VertexBuffer buf, float[,] verts)
+            internal Pair(DrawData buf, float[,] verts)
             {
                 buffer = buf;
                 vertices = verts;
             }
         }
 
-        private ConcurrentQueue<VertexBufferInst> ToDelete;
+        private ConcurrentQueue<DrawDataInst> ToDelete;
         private ConcurrentQueue<Pair> ToCreate;
-        private ConcurrentQueue<VertexBuffer> ToRemove;
+        private ConcurrentQueue<DrawData> ToRemove;
 
-        public class Iterator : IEnumerator<VertexBuffer>
-        {
-            private VertexBuffer buf;
+        List<WeakReference<DrawData>> RenderList;
 
-            public VertexBuffer Current
-            {
-                get
-                {
-                    return buf;
-                }
-            }
-
-            public Iterator(VertexBuffer buffer)
-            {
-                buf = buffer;
-            }
-        }
-
-        List<WeakReference<VertexBuffer>> RenderList;
-
-        internal static GLBufferManager Global;
-
-        internal void DeleteBuffer(VertexBufferInst buf)
+        internal void DeleteBuffer(DrawDataInst buf)
         {
             ToDelete.Enqueue(buf);
         }
-        internal void CreateBuffer(VertexBuffer buf, float[,] mesh_data)
+        internal void CreateBuffer(DrawData buf, float[,] mesh_data)
         {
             ToCreate.Enqueue(new Pair(buf, mesh_data));
         }
-        internal void RemoveBuffer(VertexBuffer buf)
+        internal void RemoveBuffer(DrawData buf)
         {
             ToRemove.Enqueue(buf);
         }
 
-        public IEnumerator<VertexBuffer> GetEnumerator()
+        public IEnumerator<DrawData> GetEnumerator()
         {
             Stack<int> RemoveQueue = new Stack<int>();
 
             int size = RenderList.Count;
             for(int i = 0; i < size; i++)
             {
-                VertexBuffer buf;
+                DrawData buf;
                 if(!RenderList[i].TryGetTarget(out buf))
                 {
                     RemoveQueue.Push(i);
@@ -126,16 +118,16 @@ namespace LodPlanet
                 {
                     pair.buffer.BufferID = (uint)GL.GenBuffer();
                     GL.BufferData(BufferTarget.ArrayBuffer, (IntPtr)(pair.vertices.LongLength * 6 * sizeof(float)), pair.vertices, BufferUsageHint.StaticDraw);
-                    RenderList.Add(new WeakReference<VertexBuffer>(pair.buffer));
+                    RenderList.Add(new WeakReference<DrawData>(pair.buffer));
                 }
 
-                VertexBuffer buf;
+                DrawData buf;
                 while (ToRemove.TryDequeue(out buf))
                 {
-                    RenderList.Remove(new WeakReference<VertexBuffer>(buf));
+                    RenderList.Remove(new WeakReference<DrawData>(buf));
                 }
 
-                VertexBufferInst inst;
+                DrawDataInst inst;
                 while (ToDelete.TryDequeue(out inst))
                 {
                     GL.DeleteBuffer(inst.BufferID);
@@ -145,7 +137,7 @@ namespace LodPlanet
 
         public void DrawBuffers()
         {
-            foreach(VertexBuffer buf in this)
+            foreach(DrawData buf in this)
             {
                 
             }
