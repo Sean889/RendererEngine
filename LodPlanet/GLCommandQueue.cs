@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace LodPlanet
 {
-    class GLCommandQueue
+    public class GLCommandQueue
     {
         private ConcurrentQueue<Action> CommandQueue = new ConcurrentQueue<Action>();
 
