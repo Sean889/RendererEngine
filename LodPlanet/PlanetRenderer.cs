@@ -30,7 +30,7 @@ namespace LodPlanet
             return BufferID != 0;
         }
 
-        public DrawData(PlanetRenderer renderer, Vector3d offset)
+        DrawData(PlanetRenderer renderer, Vector3d offset)
         {
             Manager = renderer;
             Offset = offset;
@@ -55,77 +55,6 @@ namespace LodPlanet
                 BufferID = buf;
             }
         }
-
-        #region ShaderCode
-        private const string VertShader = ""
-            + "#version 430\n"
-
-            + "layout(location = 0) in vec3 vert;"
-            + "layout(location = 1) in vec3 norm;"
-            + "layout(location = 2) in vec3 texcoord;"
-            + "layout(location = 0) uniform mat4 mvp;"
-            + "layout(location = 4) uniform mat4 m_rot;"
-            + "layout(location = 25) uniform vec3 eye;"
-
-            + "smooth out vec3 normal;"
-            + "smooth out vec3 texcoord0;"
-            + "smooth out vec3 eye_dir;"
-
-            + "void main()"
-            + "{"
-	        + "    normal = (m_rot * vec4(normalize(norm), 1.0)).xyz;"
-	        + "    texcoord0 = texcoord;"
-	        + "    eye_dir = normalize(vert - eye);"
-	        + "    gl_Position = mvp * vec4(vert, 1.0);"
-            + "}";
-        private const string FragShader = ""
-            + "#version 430\n"
-
-            + "in vec3 normal;"
-            + "in vec3 texcoord0;"
-            + "in vec3 eye_dir;"
-            
-            + "layout(location = 20) uniform float shininess;"
-            + "layout(location = 21) uniform vec4 ambient;"
-            + "layout(location = 22) uniform vec4 specular;"
-            + "layout(location = 23) uniform samplerCube tex;"
-            + "//World space light vector"
-            + "layout(location = 24) uniform vec3 lightdir;"
-
-            + "out vec4 colour;"
-
-            + "void main()"
-            + "{"
-            + "    // set the specular term to black"
-            + "    vec4 spec = vec4(0.0);"
- 
-            + "    // normalize both input vectors"
-            + "    vec3 n = normalize(normal);"
-            + "    vec3 e = eye_dir;"
- 
-             + "   float intensity = max(dot(n,lightdir), 0.0);"
- 
-             + "   // if the vertex is lit compute the specular colour"
-             + "   if (intensity > 0.0) {"
-             + "        vec3 h = normalize(lightdir + e);  "
-             + "       // compute the specular term into spec"
-             + "       float intSpec = max(dot(h,n), 0.0);"
-             + "       spec = specular * pow(intSpec,shininess);"
-             + "   }"
-             + "   colour = max(intensity *  texture(tex, texcoord0) + spec / 4.0, ambient);"
-	         + "   colour = vec4((dot(n, lightdir) + 0.2) * texture(tex, texcoord0));"
-             + "}";
-        #endregion
-
-        private int IndexBuffer;
-        private int Shader;
-
-        private int ColourTexture;
-        private int HeightMap;
-        private int NormalMap;
-
-        public Planet PlanetInst;
-        public Camera CameraInst;
         
         private struct Pair
         {
@@ -143,20 +72,7 @@ namespace LodPlanet
         private ConcurrentQueue<Pair> ToCreate = new ConcurrentQueue<Pair>();
         private ConcurrentQueue<DrawData> ToRemove = new ConcurrentQueue<DrawData>();
 
-        private List<WeakReference<DrawData>> RenderList = new List<WeakReference<DrawData>>();
-
-        private static Matrix4 ConvertToMatrix(Matrix4d mat)
-        {
-            return new Matrix4(
-                (float)mat.M11, (float)mat.M12, (float)mat.M13, (float)mat.M14,
-                (float)mat.M21, (float)mat.M22, (float)mat.M23, (float)mat.M24,
-                (float)mat.M31, (float)mat.M32, (float)mat.M33, (float)mat.M34,
-                (float)mat.M41, (float)mat.M42, (float)mat.M43, (float)mat.M44);
-        }
-        private static Vector3 ConvertToVector(Vector3d vec)
-        {
-            return new Vector3((float)vec.X, (float)vec.Y, (float)vec.Z);
-        }
+        List<WeakReference<DrawData>> RenderList = new List<WeakReference<DrawData>>();
 
         internal void DeleteBuffer(DrawDataInst buf)
         {
@@ -220,96 +136,12 @@ namespace LodPlanet
             }
         }
 
-        public void Draw()
+        public void DrawBuffers()
         {
-            GL.UseProgram(Shader);
-
-            GL.ActiveTexture(TextureUnit.Texture0);
-            GL.BindTexture(TextureTarget.TextureCubeMap, ColourTexture);
-
-            GL.ActiveTexture(TextureUnit.Texture1);
-            GL.BindTexture(TextureTarget.TextureCubeMap, HeightMap);
-
-            GL.ActiveTexture(TextureUnit.Texture2);
-            GL.BindTexture(TextureTarget.TextureCubeMap, NormalMap);
-
-            GL.EnableVertexAttribArray(0);
-            GL.EnableVertexAttribArray(1);
-
-            Matrix4d temp = Matrix4d.CreateFromQuaternion(PlanetInst.Rotation);
-            Matrix4d trans =
-                Matrix4d.Perspective(CameraInst.FovY, CameraInst.Aspect, CameraInst.NearZ, CameraInst.FarZ)
-                * Matrix4d.CreateFromQuaternion(CameraInst.Rotation).Inverted()
-                * Matrix4d.CreateTranslation(CameraInst.Position).Inverted()
-                * (temp * Matrix4d.CreateTranslation(PlanetInst.Position));
-            Matrix4 rtm = ConvertToMatrix(temp);
-
-            Vector3d RCamPos = PlanetInst.Position - CameraInst.Position;
-
-            foreach(DrawData data in this)
+            foreach(DrawData buf in this)
             {
-                temp = Matrix4d.CreateTranslation(data.Offset);
-                Matrix4 mat = ConvertToMatrix(temp);
-
-                GL.BindBuffer(BufferTarget.ArrayBuffer, data.BufferID);
-
-                GL.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, sizeof(float) * 6, 0);
-                GL.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, true, sizeof(float) * 6, sizeof(float) * 3);
-
-                GL.UniformMatrix4(0, false, ref mat);
-                GL.UniformMatrix4(0, false, ref rtm);
-
-                //Maximum mesh deformation
-                GL.Uniform1(9, 1024);
-
-                //Texture IDs
-                GL.Uniform1(10, 0);
-                GL.Uniform1(11, 1);
-                GL.Uniform1(12, 2);
-
-                //Light direction
-                GL.Uniform3(15, 0.0f, 0.0f, 1.0f);
-
-                //Eye position
-                GL.Uniform3(20, ConvertToVector(RCamPos + data.Offset));
-
-                //Draw call
-                GL.DrawElements(BeginMode.Triangles, (int)Patch.I_NUM_INDICES, DrawElementsType.UnsignedInt, 0);
+                
             }
-        }
-
-        PlanetRenderer(Camera cam, Planet planet, int ColourTexture, int HeightMap, int NormalMap)
-        {
-            this.CameraInst = cam;
-            this.PlanetInst = planet;
-            this.ColourTexture = ColourTexture;
-            this.HeightMap = HeightMap;
-            this.NormalMap = NormalMap;
-            
-            IndexBuffer = GL.GenBuffer();
-            GL.BindBuffer(BufferTarget.ArrayBuffer, IndexBuffer);
-            GL.BufferData(BufferTarget.ArrayBuffer, (IntPtr)(sizeof(uint) * Patch.I_NUM_INDICES), Patch.INDICES, BufferUsageHint.StaticRead);
-
-            Shader = GL.CreateProgram();
-            int vrt = GL.CreateShader(ShaderType.VertexShader);
-            int frg = GL.CreateShader(ShaderType.FragmentShader);
-
-            GL.ShaderSource(vrt, VertShader);
-            GL.ShaderSource(frg, FragShader);
-
-            GL.CompileShader(vrt);
-            GL.CompileShader(frg);
-
-            GL.AttachShader(Shader, vrt);
-            GL.AttachShader(Shader, frg);
-
-            GL.LinkProgram(Shader);
-
-            GL.DetachShader(Shader, vrt);
-            GL.DetachShader(Shader, vrt);
-
-            GL.DeleteShader(vrt);
-            GL.DeleteShader(frg);
         }
     }
 }

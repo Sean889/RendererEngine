@@ -46,7 +46,7 @@ using System.Collections.Concurrent;
 	values can allow the user to set the value returned
 	independently of the function, if required.
 */
-namespace CppThreadPool
+namespace ThreadPool
 {
     public class ThreadPool
     {
@@ -282,7 +282,7 @@ namespace CppThreadPool
 
         //Creates a task from the given function and enqueues it
         //to the task queue.
-        public static Future<T> QueueAsync<T>(Func<T> func)
+        public Future<T> QueueAsync<T>(Func<T> func)
         {
             Promise<T> pr = new Promise<T>(func);
             list.Push(pr);
@@ -292,14 +292,14 @@ namespace CppThreadPool
         //task queue. This can be used to do a bulk enqueue 
         //operation if the promise->next field points to another
         //promise.
-        public static void QueueAsync<T>(Promise<T> promise)
+        public void QueueAsync<T>(Promise<T> promise)
         {
             list.Push(promise);
             Monitor.Pulse(tasksync);
         }
 
         //Overload for void returns
-        public static Future QueueAsync<T>(Action func)
+        public Future QueueAsync<T>(Action func)
         {
             Promise pr = new Promise(func);
             list.Push(pr);
@@ -311,7 +311,7 @@ namespace CppThreadPool
         //operation if the promise->next field points to another
         //promise. The task will run at a lower priority than
         //the other tasks.
-        public static void QueueBackgroundAsync(Action func)
+        void QueueBackgroundAsync(Action func)
         {
             list.Push(new Promise(func));
             Monitor.Pulse(tasksync);
@@ -320,7 +320,7 @@ namespace CppThreadPool
         //Creates a task that will execute automatically, the
         //task will delete itself when it is completed. Use like
         //QueueBackgroundAsync() but with normal priority.
-        public static void QueueAsyncAuto(Action func)
+        void QueueAsyncAuto(Action func)
         {
             list.Push(new Promise(func));
             Monitor.Pulse(tasksync);

@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 
-namespace CppThreadPool
+namespace ThreadPool
 {
     internal class AtomicBoolean
     {

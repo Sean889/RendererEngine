@@ -4,7 +4,6 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using OpenTK;
-using CppThreadPool;
 
 namespace LodPlanet
 {
@@ -25,15 +24,11 @@ namespace LodPlanet
     {
         //Const values, not for use outside of the assembly
         //Use the accessors if not inside the dll
+        //Use these if inside the dll
         internal const uint I_SIDE_LEN = 64u;
         internal const uint I_NUM_INDICES = (I_SIDE_LEN - 1u) * (I_SIDE_LEN - 1u) * 6u + 24u * (I_SIDE_LEN - 1u);
         internal const uint I_NUM_VERTICES = I_SIDE_LEN * I_SIDE_LEN + I_SIDE_LEN * 4u;
         internal const uint I_SKIRT_DEPTH = 5000u;
-
-        private static double Distance(Vector3d lhs, Vector3d rhs)
-        {
-            return (lhs - rhs).Length;
-        }
 
         //Accessors to const values
         public static uint SIDE_LEN
@@ -67,7 +62,6 @@ namespace LodPlanet
 
         public static readonly uint[] INDICES = GetIndices();
 
-        //Prefer getting the value of INDICES instead of using this
         public static uint[] GetIndices()
         {
            uint[] indices = new uint[NUM_INDICES];
@@ -143,61 +137,22 @@ namespace LodPlanet
         //Corners of the patch on the base cube
         public Vector3d nwc, nec, swc, sec;
 
-        public Vector3d pos;       //Position on the sphere
+        public Vector3d pos;               //Position on the sphere
 
         public uint level;              //Level within the quadtree
         public double side_len;         //Side length of the patch
         public double planet_radius;    //Radius of the planet to wich this patch belongs
 
-        public Vector3d Position
-        {
-            get
-            {
-                return pos;
-            }
-            set
-            {
-                pos = value;
-            }
-        }
-        public double SideLength
-        {
-            get
-            {
-                return side_len;
-            }
-            set
-            {
-                side_len = value;
-            }
-        }
-        public double PlanetRadius
-        {
-            get
-            {
-                return planet_radius;
-            }
-            set
-            {
-                planet_radius = value;
-            }
-        }
-
-        public volatile float[,] mesh_data = null;
+        public float[,] mesh_data = null;
 
         private PlanetRenderer executor;
 
-        private DrawData RenderData = null;
-
-        public bool IsSubdivided
+        bool IsSubdivided()
         {
-            get
-            {
-                return nw != null;
-            }
+            return nw != null;
         }
 
-        public Patch(Vector3d nwc, Vector3d nec, Vector3d swc, Vector3d sec, double planet_radius, double side_len, PlanetRenderer manager, Patch parent = null, uint level = 0)
+        Patch(Vector3d nwc, Vector3d nec, Vector3d swc, Vector3d sec, double planet_radius, double side_len, PlanetRenderer manager, Patch parent = null, uint level = 0)
         {
             this.nwc = nwc;
             this.nec = nec;
@@ -210,7 +165,7 @@ namespace LodPlanet
             this.level = level;
         }
 
-        public void MergeChildren()
+        void MergeChildren()
         {
             nw = null;
             ne = null;
@@ -218,10 +173,7 @@ namespace LodPlanet
             se = null;
         }
 
-        /// <summary>
-        /// Subdivides the patch and generates mesh data for the new children
-        /// </summary>
-        public void Subdivide()
+        void Subdivide()
         {
             Vector3d centre = (nwc + nec + swc + sec) * 0.25;
 
@@ -235,10 +187,7 @@ namespace LodPlanet
             sw.GenData();
             se.GenData();
         }
-        /// <summary>
-        /// Subdivides the patch but doesn't generate mesh data for the new children.
-        /// </summary>
-        public void Split()
+        void Split()
         {
             Vector3d centre = (nwc + nec + swc + sec) * 0.25;
 
@@ -247,10 +196,7 @@ namespace LodPlanet
             sw = new Patch((nwc + swc) * 0.5, centre, swc, (swc + sec) * 0.5, planet_radius, side_len * 0.5, executor, this, level + 1);
             se = new Patch(centre, (nec + sec) * 0.5, (swc + sec) * 0.5, sec, planet_radius, side_len * 0.5, executor, this, level + 1);
         }
-        /// <summary>
-        /// Generates the mesh data from the position data.
-        /// </summary>
-        public void GenData()
+        void GenData()
         {
             //Interpolation constant
             const double INTERP = 1.0 / (I_SIDE_LEN - 1);
@@ -353,136 +299,6 @@ namespace LodPlanet
                 mesh_data_ptr[data_size + i, 4] = (float)vnrm.Y;
                 mesh_data_ptr[data_size + i, 5] = (float)vnrm.Z;
 			}
-
-            mesh_data = mesh_data_ptr;
-        }
-
-        /// <summary>
-        /// Checks whether the patch meets the requirements for subdivision.
-        /// </summary>
-        /// <param name="CamPos"> The current camera position. </param>
-        /// <returns></returns>
-        public bool ShouldSubdivide(Vector3d CamPos)
-        {
-            double dis = Distance(pos, CamPos) - side_len;
-            return side_len >= (I_SIDE_LEN - 1) * 16 && dis < I_SIDE_LEN;
-        }
-        /// <summary>
-        /// Checks whether the current patch meets the requirements for merging.
-        /// </summary>
-        /// <param name="CamPos"> The current camera position. </param>
-        /// <returns></returns>
-        public bool ShouldMerge(Vector3d CamPos)
-        {
-            double dis = Distance(pos, CamPos) - side_len;
-            return dis > side_len;
-        }
-
-        public bool CheckAndSubdivide(Vector3d CamPos)
-        {
-			//If the patch is subdivided
-			if (IsSubdivided)
-			{
-				//If the patch is far enough away that it should be merged
-				if (ShouldMerge(CamPos))
-				{
-					//Add the patch to the renderer's list to render
-					RenderData = new DrawData(executor, pos);
-
-					//Delete the patch's children
-					MergeChildren();
-					//Indicate that a change occured
-					return true;
-				}
-				else
-				{
-					//If the patch should not be merged, continue recursive check
-					bool r1 = nw.CheckAndSubdivide(CamPos);
-					bool r2 = ne.CheckAndSubdivide(CamPos);
-					bool r3 = sw.CheckAndSubdivide(CamPos);
-					bool r4 = se.CheckAndSubdivide(CamPos);
-
-					//Return results
-					return r1 || r2 || r3 || r4;
-				}
-			}
-			//If the patch should be subdivided
-			else if (ShouldSubdivide(CamPos))
-			{
-				//Split but don't generate data
-				Split();
-				//Do that on another thread
-				//Also put the patch in the remove list
-                ThreadPool.QueueAsyncAuto(new Action(delegate{
-                    nw.GenData();
-                    ne.GenData();
-                    sw.GenData();
-                    se.GenData();
-
-                    nw.RenderData = new DrawData(executor, nw.pos);
-                    ne.RenderData = new DrawData(executor, ne.pos);
-                    sw.RenderData = new DrawData(executor, sw.pos);
-                    se.RenderData = new DrawData(executor, se.pos);
-
-                    executor.CreateBuffer(nw.RenderData, nw.mesh_data);
-                    executor.CreateBuffer(ne.RenderData, ne.mesh_data);
-                    executor.CreateBuffer(sw.RenderData, sw.mesh_data);
-                    executor.CreateBuffer(se.RenderData, se.mesh_data);
-                }));
-				//Indicate somthing happened
-				return true;
-			}
-			//Nothing happened
-			return false;
-        }
-        public bool ForceSubdivide(Vector3d cam_pos)
-        {
-            if (IsSubdivided)
-            {
-                if (ShouldMerge(cam_pos))
-                {
-                    MergeChildren();
-                    return true;
-                }
-                else
-                {
-                    bool r1 = nw.ForceSubdivide(cam_pos);
-                    bool r2 = ne.ForceSubdivide(cam_pos);
-                    bool r3 = sw.ForceSubdivide(cam_pos);
-                    bool r4 = se.ForceSubdivide(cam_pos);
-
-                    return r1 || r2 || r3 || r4;
-                }
-            }
-            else if (ShouldSubdivide(cam_pos))
-            {
-                Split();
-
-                nw.ForceSubdivide(cam_pos);
-                ne.ForceSubdivide(cam_pos);
-                sw.ForceSubdivide(cam_pos);
-                se.ForceSubdivide(cam_pos);
-
-                return true;
-            }
-
-            if (mesh_data == null)
-                GenData();
-
-            return false;
-        }
-
-        internal void GenRenderData()
-        {
-            nw.RenderData = new DrawData(executor, nw.pos);
-            ne.RenderData = new DrawData(executor, ne.pos);
-            sw.RenderData = new DrawData(executor, sw.pos);
-            se.RenderData = new DrawData(executor, se.pos);
-
-            executor.CreateBuffer(nw.RenderData, nw.mesh_data);
-            executor.CreateBuffer(ne.RenderData, ne.mesh_data);
-            executor.CreateBuffer(sw.RenderData, sw.mesh_data);
-            executor.CreateBuffer(se.RenderData, se.mesh_data);
         }
     }
 }
