@@ -124,6 +124,8 @@ namespace LodPlanet
         private int HeightMap;
         private int NormalMap;
 
+        private GLCommandQueue CommandQueue;
+
         public Planet PlanetInst;
         public Camera CameraInst;
         
@@ -197,6 +199,7 @@ namespace LodPlanet
 
         public void Update()
         {
+            CommandQueue.EnqueueCommand(new Action(delegate
             {
                 Pair pair;
                 while (ToCreate.TryDequeue(out pair))
@@ -217,99 +220,114 @@ namespace LodPlanet
                 {
                     GL.DeleteBuffer(inst.BufferID);
                 }
-            }
+            }));
         }
 
         public void Draw()
         {
-            GL.UseProgram(Shader);
-
-            GL.ActiveTexture(TextureUnit.Texture0);
-            GL.BindTexture(TextureTarget.TextureCubeMap, ColourTexture);
-
-            GL.ActiveTexture(TextureUnit.Texture1);
-            GL.BindTexture(TextureTarget.TextureCubeMap, HeightMap);
-
-            GL.ActiveTexture(TextureUnit.Texture2);
-            GL.BindTexture(TextureTarget.TextureCubeMap, NormalMap);
-
-            GL.EnableVertexAttribArray(0);
-            GL.EnableVertexAttribArray(1);
-
-            Matrix4d temp = Matrix4d.CreateFromQuaternion(PlanetInst.Rotation);
-            Matrix4d trans =
-                Matrix4d.Perspective(CameraInst.FovY, CameraInst.Aspect, CameraInst.NearZ, CameraInst.FarZ)
-                * Matrix4d.CreateFromQuaternion(CameraInst.Rotation).Inverted()
-                * Matrix4d.CreateTranslation(CameraInst.Position).Inverted()
-                * (temp * Matrix4d.CreateTranslation(PlanetInst.Position));
-            Matrix4 rtm = ConvertToMatrix(temp);
-
-            Vector3d RCamPos = PlanetInst.Position - CameraInst.Position;
-
-            foreach(DrawData data in this)
+            CommandQueue.EnqueueCommand(new Action(delegate
             {
-                temp = Matrix4d.CreateTranslation(data.Offset);
-                Matrix4 mat = ConvertToMatrix(temp);
+                GL.UseProgram(Shader);
 
-                GL.BindBuffer(BufferTarget.ArrayBuffer, data.BufferID);
+                GL.ActiveTexture(TextureUnit.Texture0);
+                GL.BindTexture(TextureTarget.TextureCubeMap, ColourTexture);
 
-                GL.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, sizeof(float) * 6, 0);
-                GL.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, true, sizeof(float) * 6, sizeof(float) * 3);
+                GL.ActiveTexture(TextureUnit.Texture1);
+                GL.BindTexture(TextureTarget.TextureCubeMap, HeightMap);
 
-                GL.UniformMatrix4(0, false, ref mat);
-                GL.UniformMatrix4(0, false, ref rtm);
+                GL.ActiveTexture(TextureUnit.Texture2);
+                GL.BindTexture(TextureTarget.TextureCubeMap, NormalMap);
 
-                //Maximum mesh deformation
-                GL.Uniform1(9, 1024);
+                GL.EnableVertexAttribArray(0);
+                GL.EnableVertexAttribArray(1);
 
-                //Texture IDs
-                GL.Uniform1(10, 0);
-                GL.Uniform1(11, 1);
-                GL.Uniform1(12, 2);
+                Matrix4d temp = Matrix4d.CreateFromQuaternion(PlanetInst.Rotation);
+                Matrix4d trans =
+                    Matrix4d.Perspective(CameraInst.FovY, CameraInst.Aspect, CameraInst.NearZ, CameraInst.FarZ)
+                    * Matrix4d.CreateFromQuaternion(CameraInst.Rotation).Inverted()
+                    * Matrix4d.CreateTranslation(CameraInst.Position).Inverted()
+                    * (temp * Matrix4d.CreateTranslation(PlanetInst.Position));
+                Matrix4 rtm = ConvertToMatrix(temp);
 
-                //Light direction
-                GL.Uniform3(15, 0.0f, 0.0f, 1.0f);
+                Vector3d RCamPos = PlanetInst.Position - CameraInst.Position;
 
-                //Eye position
-                GL.Uniform3(20, ConvertToVector(RCamPos + data.Offset));
+                foreach (DrawData data in this)
+                {
+                    temp = Matrix4d.CreateTranslation(data.Offset);
+                    Matrix4 mat = ConvertToMatrix(temp);
 
-                //Draw call
-                GL.DrawElements(BeginMode.Triangles, (int)Patch.I_NUM_INDICES, DrawElementsType.UnsignedInt, 0);
-            }
+                    GL.BindBuffer(BufferTarget.ArrayBuffer, data.BufferID);
+
+                    GL.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, sizeof(float) * 6, 0);
+                    GL.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, true, sizeof(float) * 6, sizeof(float) * 3);
+
+                    GL.UniformMatrix4(0, false, ref mat);
+                    GL.UniformMatrix4(0, false, ref rtm);
+
+                    //Maximum mesh deformation
+                    GL.Uniform1(9, 1024);
+
+                    //Texture IDs
+                    GL.Uniform1(10, 0);
+                    GL.Uniform1(11, 1);
+                    GL.Uniform1(12, 2);
+
+                    //Light direction
+                    GL.Uniform3(15, 0.0f, 0.0f, 1.0f);
+
+                    //Eye position
+                    GL.Uniform3(20, ConvertToVector(RCamPos + data.Offset));
+
+                    //Draw call
+                    GL.DrawElements(BeginMode.Triangles, (int)Patch.I_NUM_INDICES, DrawElementsType.UnsignedInt, 0);
+                }
+            }));
         }
 
-        PlanetRenderer(Camera cam, Planet planet, int ColourTexture, int HeightMap, int NormalMap)
+        PlanetRenderer(GLCommandQueue CommandQueue, Camera cam, Planet planet, int ColourTexture, int HeightMap, int NormalMap)
         {
             this.CameraInst = cam;
             this.PlanetInst = planet;
             this.ColourTexture = ColourTexture;
             this.HeightMap = HeightMap;
             this.NormalMap = NormalMap;
-            
-            IndexBuffer = GL.GenBuffer();
-            GL.BindBuffer(BufferTarget.ArrayBuffer, IndexBuffer);
-            GL.BufferData(BufferTarget.ArrayBuffer, (IntPtr)(sizeof(uint) * Patch.I_NUM_INDICES), Patch.INDICES, BufferUsageHint.StaticRead);
+            this.CommandQueue = CommandQueue;
 
-            Shader = GL.CreateProgram();
-            int vrt = GL.CreateShader(ShaderType.VertexShader);
-            int frg = GL.CreateShader(ShaderType.FragmentShader);
+            CommandQueue.EnqueueCommand(new Action(delegate
+            {
+                IndexBuffer = GL.GenBuffer();
+                GL.BindBuffer(BufferTarget.ArrayBuffer, IndexBuffer);
+                GL.BufferData(BufferTarget.ArrayBuffer, (IntPtr)(sizeof(uint) * Patch.I_NUM_INDICES), Patch.INDICES, BufferUsageHint.StaticRead);
 
-            GL.ShaderSource(vrt, VertShader);
-            GL.ShaderSource(frg, FragShader);
+                Shader = GL.CreateProgram();
+                int vrt = GL.CreateShader(ShaderType.VertexShader);
+                int frg = GL.CreateShader(ShaderType.FragmentShader);
 
-            GL.CompileShader(vrt);
-            GL.CompileShader(frg);
+                GL.ShaderSource(vrt, VertShader);
+                GL.ShaderSource(frg, FragShader);
 
-            GL.AttachShader(Shader, vrt);
-            GL.AttachShader(Shader, frg);
+                GL.CompileShader(vrt);
+                GL.CompileShader(frg);
 
-            GL.LinkProgram(Shader);
+                GL.AttachShader(Shader, vrt);
+                GL.AttachShader(Shader, frg);
 
-            GL.DetachShader(Shader, vrt);
-            GL.DetachShader(Shader, vrt);
+                GL.LinkProgram(Shader);
 
-            GL.DeleteShader(vrt);
-            GL.DeleteShader(frg);
+                GL.DetachShader(Shader, vrt);
+                GL.DetachShader(Shader, vrt);
+
+                GL.DeleteShader(vrt);
+                GL.DeleteShader(frg);
+            }));
+        }
+        ~PlanetRenderer()
+        {
+            CommandQueue.EnqueueCommand(new Action(delegate
+            {
+                GL.DeleteProgram(Shader);
+                GL.DeleteBuffer(IndexBuffer);
+            }));
         }
     }
 }
