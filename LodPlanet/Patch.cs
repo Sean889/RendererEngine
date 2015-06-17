@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using OpenTK;
 using CppThreadPool;
+using LodPlanet.Internal;
 
 namespace LodPlanet
 {
@@ -197,6 +198,17 @@ namespace LodPlanet
             }
         }
 
+        public IEnumerable<Patch> Children
+        {
+            get
+            {
+                yield return nw;
+                yield return ne;
+                yield return sw;
+                yield return se;
+            }
+        }
+
         public Patch(Vector3d nwc, Vector3d nec, Vector3d swc, Vector3d sec, double planet_radius, double side_len, PlanetRenderer manager, Patch parent = null, uint level = 0)
         {
             this.nwc = nwc;
@@ -230,10 +242,11 @@ namespace LodPlanet
 			sw = new Patch((nwc + swc) * 0.5, centre, swc, (swc + sec) * 0.5, planet_radius, side_len * 0.5, executor, this, level + 1);
 			se = new Patch(centre, (nec + sec) * 0.5, (swc + sec) * 0.5, sec, planet_radius, side_len * 0.5, executor, this, level + 1);
 
-            nw.GenData();
-            ne.GenData();
-            sw.GenData();
-            se.GenData();
+            foreach (Patch p in Children)
+            {
+                p.GenData();
+                p.GenRenderData();
+            }
         }
         /// <summary>
         /// Subdivides the patch but doesn't generate mesh data for the new children.
@@ -474,15 +487,9 @@ namespace LodPlanet
 
         internal void GenRenderData()
         {
-            nw.RenderData = new DrawData(executor, nw.pos);
-            ne.RenderData = new DrawData(executor, ne.pos);
-            sw.RenderData = new DrawData(executor, sw.pos);
-            se.RenderData = new DrawData(executor, se.pos);
+            RenderData = new DrawData(executor, pos);
 
-            executor.CreateBuffer(nw.RenderData, nw.mesh_data);
-            executor.CreateBuffer(ne.RenderData, ne.mesh_data);
-            executor.CreateBuffer(sw.RenderData, sw.mesh_data);
-            executor.CreateBuffer(se.RenderData, se.mesh_data);
+            executor.CreateBuffer(RenderData, mesh_data);
         }
     }
 }

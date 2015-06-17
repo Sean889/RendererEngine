@@ -50,11 +50,12 @@ namespace CppThreadPool
 {
     public class ThreadPool
     {
-        internal static readonly object tasksync = new object();
+        //internal static readonly object tasksync = new object();
         internal static AtomicBoolean terminate;
         internal static List<Thread> threads;
         internal static InstructionList list;
         internal static ConcurrentQueue<NodeBase> background_tasks;
+        internal static AutoResetEvent Event = new AutoResetEvent(false);
 
 #pragma warning disable 420
 
@@ -118,7 +119,7 @@ namespace CppThreadPool
                         }
                     }
 
-                    Monitor.Pulse(tasksync);
+                    Event.Set();
                 }
             }
             public NodeBase Pop()
@@ -126,11 +127,13 @@ namespace CppThreadPool
                 for (; ; )
                 {
                     NodeBase current = Head;
-                    NodeBase next = current.next;
 
                     if (current == null)
                         //The list is empty return null
                         return null;
+
+                    NodeBase next = current.next;
+
                     uint id = current.id;
                     //Try and remove the first item from the list using CAS
                     while (Interlocked.CompareExchange(ref Head, current, current.next) != current.next)
@@ -188,12 +191,9 @@ namespace CppThreadPool
         {
             do
             {
-                lock (tasksync)
-                {
-                    Monitor.Wait(tasksync);
-                }
+                Event.WaitOne(new TimeSpan(10));
 
-               NodeBase background_task, task = list.Pop();
+                NodeBase background_task, task = list.Pop();
                 if (!background_tasks.TryDequeue(out background_task))
                     background_task = null;
 
@@ -217,10 +217,7 @@ namespace CppThreadPool
         {
             do
             {
-                lock (tasksync)
-                {
-                    Monitor.Wait(tasksync);
-                }
+                Event.WaitOne(new TimeSpan(10));
 
                 NodeBase task = list.Pop();
 
@@ -234,22 +231,29 @@ namespace CppThreadPool
 
         //Initialization and termination functions
 
-        //Initializes the threadpool with the specified
-        //number of threads. Before this function is 
-        //called no tasks will be executed except when
-        //future<_Ty>.get() is called.
+        /// <summary>
+        /// Initializes the threadpool with the specified
+        /// number of threads. Before this function is 
+        /// called no tasks will be executed except when
+        /// future<_Ty>.get() is called.
+        /// </summary>
+        /// <param name="num_threads"> The number of threads to initialize the thread pool with. </param>
         public static void Init(uint num_threads)
         {
             list = new InstructionList();
             background_tasks = new ConcurrentQueue<NodeBase>();
             terminate = new AtomicBoolean(false);
-            terminate.Value = false;
-            threads.Add(new Thread(BackgroundThreadExecutor));
+            threads = new List<Thread>();
+            terminate.TrueToFalse();
+            Thread thr = new Thread(BackgroundThreadExecutor);
+            threads.Add(thr);
+            thr.Start();
             for (uint i = 1; i < num_threads; i++)
             {
-                threads.Add(new Thread(ThreadExecutor));
+                thr = new Thread(ThreadExecutor);
+                threads.Add(thr);
+                thr.Start();
             }
-            Monitor.PulseAll(tasksync);
         }
         //Terminates the threadpool, all tasks remaining
         //in the task queue will be executed before this 
@@ -258,8 +262,8 @@ namespace CppThreadPool
         //is called again
         public static void Terminate()
         {
-            terminate.Value = true;
-            Monitor.PulseAll(tasksync);
+            terminate.FalseToTrue();
+            
             int size = threads.Count;
             for (int i = 0; i < size; i++)
             {
@@ -295,7 +299,7 @@ namespace CppThreadPool
         public static void QueueAsync<T>(Promise<T> promise)
         {
             list.Push(promise);
-            Monitor.Pulse(tasksync);
+            Event.Set();
         }
 
         //Overload for void returns
@@ -314,7 +318,7 @@ namespace CppThreadPool
         public static void QueueBackgroundAsync(Action func)
         {
             list.Push(new Promise(func));
-            Monitor.Pulse(tasksync);
+            Event.Set();
         }
 
         //Creates a task that will execute automatically, the
@@ -323,7 +327,7 @@ namespace CppThreadPool
         public static void QueueAsyncAuto(Action func)
         {
             list.Push(new Promise(func));
-            Monitor.Pulse(tasksync);
+            Event.Set();
         }
     }
 }

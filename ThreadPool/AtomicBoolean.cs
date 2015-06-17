@@ -6,7 +6,7 @@ using System.Threading;
 
 namespace CppThreadPool
 {
-    internal class AtomicBoolean
+    public class AtomicBoolean
     {
         private const int TRUE_VALUE = 1;
         private const int FALSE_VALUE = 0;
