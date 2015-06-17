@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 
-namespace ObjectSystem
+namespace LodPlanet
 {
 #pragma warning disable 420
     public struct AtomicBoolean
